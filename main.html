@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Riemann Sum Visualizer (Web Version)</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            background-color: #f0f2f6;
+        }
+
+        /* ส่วน Sidebar สำหรับ Sliders */
+        .sidebar {
+            width: 300px;
+            background-color: #ffffff;
+            padding: 20px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .sidebar h2 {
+            margin-top: 0;
+            font-size: 1.2rem;
+            color: #333;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .control-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        /* ส่วนแสดงผลกราฟ */
+        .main-content {
+            flex-grow: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #plot-area {
+            width: 100%;
+            height: 100%;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h2>Riemann Parameters</h2>
+        <p style="font-size: 0.8rem; color: #666;">Adjust sliders to update the plot.</p>
+
+        <div class="control-group">
+            <div class="control-label"><span>m (Slope)</span> <span id="val-m">1.00</span></div>
+            <input type="range" id="slider-m" min="0" max="1.5" step="0.01" value="1.0">
+        </div>
+
+        <div class="control-group">
+            <div class="control-label"><span>b (Period)</span> <span id="val-b">0.10</span></div>
+            <input type="range" id="slider-b" min="0.01" max="0.25" step="0.001" value="0.1">
+        </div>
+
+        <div class="control-group">
+            <div class="control-label"><span>d (Center)</span> <span id="val-d">6.00</span></div>
+            <input type="range" id="slider-d" min="0" max="12" step="0.1" value="6.0">
+        </div>
+
+        <div class="control-group">
+            <div class="control-label"><span>Sigma (Width)</span> <span id="val-s">1.00</span></div>
+            <input type="range" id="slider-s" min="0.5" max="2" step="0.01" value="1.0">
+        </div>
+
+        <div class="control-group">
+            <div class="control-label"><span>n (Rectangles)</span> <span id="val-n">20</span></div>
+            <input type="range" id="slider-n" min="1" max="100" step="1" value="20">
+        </div>
+
+        <div class="control-group">
+            <div class="control-label"><span>A (Amplitude)</span> <span id="val-A">1.00</span></div>
+            <input type="range" id="slider-A" min="0" max="10" step="0.1" value="1.0">
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div id="plot-area"></div>
+    </div>
+
+    <script>
+        // 1. กำหนดตัวแปรเริ่มต้น (เหมือนใน Python)
+        let params = {
+            m: 1.0,
+            b: 0.1,
+            d: 6.0,
+            s: 1.0,
+            n: 20,
+            A: 1.0
+        };
+
+        const range_a = 0;
+        const range_b = 12;
+
+        // 2. ฟังก์ชันคณิตศาสตร์ (แปลจาก Python: f(x,m,b,d,s,A))
+        function f(x, p) {
+            let lin = p.m * x;
+            let osc = Math.sin(x / p.b);
+            let ex = p.A * Math.exp( -Math.pow(x - p.d, 2) / Math.pow(p.s, 2) );
+            return lin + osc * ex;
+        }
+
+        // 3. ฟังก์ชันคำนวณ Riemann Sum และเตรียมข้อมูลวาดกราฟ
+        function calculateData() {
+            // สร้างข้อมูลเส้นกราฟ (Curve) - ความละเอียด 400 จุด
+            let x_curve = [];
+            let y_curve = [];
+            let k = 400;
+            for (let i = 0; i < k; i++) {
+                let x = range_a + i * (range_b - range_a) / (k - 1);
+                x_curve.push(x);
+                y_curve.push(f(x, params));
+            }
+
+            // สร้างข้อมูลสี่เหลี่ยม (Rectangles) และคำนวณพื้นที่
+            let dx = (range_b - range_a) / params.n;
+            let total_area = 0;
+            let shapes = []; // ใช้เก็บรูปสี่เหลี่ยมสำหรับ Plotly
+
+            for (let i = 0; i < params.n; i++) {
+                let x_left = range_a + i * dx;
+                let x_right = x_left + dx;
+                
+                // Left Sample ตาม Python code
+                let height = f(x_left, params); 
+                
+                total_area += height * dx;
+
+                // สร้างรูปสี่เหลี่ยมแต่ละแท่ง
+                shapes.push({
+                    type: 'rect',
+                    x0: x_left,
+                    y0: 0,
+                    x1: x_right,
+                    y1: height,
+                    fillcolor: 'rgba(255, 165, 0, 0.4)', // สีส้มจางๆ แบบ Matplotlib
+                    line: {
+                        color: 'black',
+                        width: 1
+                    }
+                });
+            }
+
+            return { x_curve, y_curve, shapes, total_area };
+        }
+
+        // 4. ฟังก์ชันวาด/อัปเดตกราฟ
+        function updatePlot() {
+            const data = calculateData();
+
+            // Trace สำหรับเส้นกราฟ
+            const trace_line = {
+                x: data.x_curve,
+                y: data.y_curve,
+                mode: 'lines',
+                name: 'f(x)',
+                line: { color: 'blue', width: 2 }
+            };
+
+            // Layout ของกราฟ
+            const layout = {
+                title: `Approx. Area = ${data.total_area.toFixed(4)}`,
+                xaxis: { range: [range_a, range_b], title: 'x' },
+                yaxis: { range: [-3, 15], title: 'y' }, // ปรับแกน Y ให้เห็นชัด
+                shapes: data.shapes, // ใส่สี่เหลี่ยมที่เราสร้าง
+                margin: { t: 50, r: 20, l: 50, b: 50 }
+            };
+
+            // สั่งวาดด้วย Plotly (ใช้ react เพื่อให้ลื่นไหลเวลาลาก slider)
+            Plotly.react('plot-area', [trace_line], layout, {responsive: true});
+        }
+
+        // 5. เชื่อมต่อ HTML Sliders เข้ากับตัวแปร JavaScript
+        const sliders = {
+            m: document.getElementById('slider-m'),
+            b: document.getElementById('slider-b'),
+            d: document.getElementById('slider-d'),
+            s: document.getElementById('slider-s'),
+            n: document.getElementById('slider-n'),
+            A: document.getElementById('slider-A')
+        };
+
+        // ฟังก์ชันเมื่อเลื่อน Slider
+        function onSliderChange(e) {
+            const id = e.target.id.split('-')[1]; // แยกชื่อตัวแปร เช่น 'm'
+            let val = parseFloat(e.target.value);
+            
+            params[id] = val;
+            
+            // อัปเดตตัวเลขข้างๆ Slider
+            document.getElementById(`val-${id}`).innerText = val.toFixed(id === 'n' ? 0 : 2);
+            
+            // สั่งวาดกราฟใหม่
+            updatePlot();
+        }
+
+        // ผูก Event Listener ให้ทุก Slider
+        Object.values(sliders).forEach(slider => {
+            slider.addEventListener('input', onSliderChange);
+        });
+
+        // วาดครั้งแรกตอนเปิดเว็บ
+        updatePlot();
+
+    </script>
+</body>
+</html>
